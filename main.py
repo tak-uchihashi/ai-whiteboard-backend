@@ -128,13 +128,9 @@ def create_context(context: Context):
         "instruction":"新規コンテキストを作成してください"
     }
     newInstruction = UserInstruction(**instruction_dict)
-    message, updated_context, ai_answer = process_instruction(newInstruction)
+    response = process_instruction(newInstruction)
     del context_versions[name]
-    return {
-        "message": message,
-        "context": updated_context,
-        "aiAnswer": ai_answer
-    }
+    return response
 
 
 context_versions = {}
@@ -230,6 +226,7 @@ def generate_ai_prompt(context: Dict, instruction: str) -> str:
     - ビジネス要求、コンポーネント定義、クラス図、シーケンス図、状態遷移図の整合性を必ず保持させること。
     - 回答は出力フォーマットのJSON形式で行ってください。回答はそのままPythonのjson.loads関数に渡されます。```で囲まないでください。
     - contextIdはキーとして使われます。現在の設計文書のcontextIdをそのまま使用してください。
+    - umlDiagramsの各要素は正しいmermaid表記である必要があります。
     - umlDiagramsの各要素に@startuml @endumlは不要です。MermaidのDiagram Typeから記述してください。
     ### クラス設計ルール
     - クラス名はPascalCaseで記述してください。
@@ -251,13 +248,13 @@ def generate_ai_prompt(context: Dict, instruction: str) -> str:
         "backgroundRequirements": [
           ["string"]
         ],
-        "umlDiagrams": [{{
+        "umlDiagrams": [
           {{
               "id": int,
               "name": "string",
               "diagramText": "string"
-           }}
-        }}
+           }},
+        
         ],
         "componentList": [
           {{
@@ -296,17 +293,22 @@ def generate_ai_prompt(context: Dict, instruction: str) -> str:
     """
     return prompt
 
+cached_client = {}
 
 def update_context_with_ai(context: Dict, instruction: str) -> Dict:
     """
     AIにコンテキストの更新を依頼し、更新されたコンテキストを取得します。
     """
     prompt = generate_ai_prompt(context, instruction)
-
-    client = OpenAI(
-        organization=os.environ.get("ORGANIZATION_ID"),
-        project=os.environ.get("PROJECT_ID"),
-    )
+    
+    if 'Cached' not in cached_client:
+        client = OpenAI(
+            organization=os.environ.get("ORGANIZATION_ID"),
+            project=os.environ.get("PROJECT_ID"),
+        )
+        cached_client['Cached'] = client
+    else:
+        client = cached_client['Cached'] 
 
     response = client.chat.completions.create(
         model='gpt-4o',
